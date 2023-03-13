@@ -1,4 +1,6 @@
-import sys, time, json, os, hashlib
+import sys, time, json, os, hashlib, random
+from Crypto.Cipher import AES 
+from Crypto.Cipher import Random
 from ecdsa import VerifyingKey, SigningKey
 from p2pnetwork.node import Node
 
@@ -234,11 +236,32 @@ class ZachCoinClient (Node):
             utx['output'].append(payback)
 
         return utx
-        # coinbase = {
-        #     'value' : self.COINBASE,
-        #     'pub_key' : vk
-        # }
+
+
+    def mine_utx(self, utx, vk):
+        # Given unspent transaction, validate it and attempt to mine with PoW
+        if(self.validate_tx(utx) == 0):
+            print("INVALID UTX. MINING FAILED. RIP")
+            return 0
         
+        # Start building block
+        
+
+        # Add coinbase to utx before processing
+        coinbase = {
+            'value': self.COINBASE,
+            'pub_key': vk.to_string().hex()
+        }
+        utx['output'].append(coinbase)
+
+        # Find PoW
+        nonce = Random.new().read(AES.block_size).hex()
+        while( int( hashlib.sha256(json.dumps(utx, sort_keys=True).encode('utf8') + nonce.encode('utf-8')).hexdigest(), 16) > self.DIFFICULTY):
+            nonce = Random.new().read(AES.block_size).hex()
+        pow = hashlib.sha256(json.dumps(utx, sort_keys=True).encode('utf8') + nonce.encode('utf-8')).hexdigest()
+
+        return ()
+
     
 def compute_BlockID(block):
     return hashlib.sha256(json.dumps(block['tx'], sort_keys=True).encode('utf-8')).hexdigest()
