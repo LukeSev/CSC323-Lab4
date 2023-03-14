@@ -1,6 +1,6 @@
 import sys, time, json, os, hashlib, random
 from Crypto.Cipher import AES 
-from Crypto.Cipher import Random
+from Crypto import Random
 from ecdsa import VerifyingKey, SigningKey
 from p2pnetwork.node import Node
 
@@ -37,7 +37,8 @@ class ZachCoinClient (Node):
                 "output": [
                     {
                         "value": 50,
-                        "pub_key": "c26cfef538dd15b6f52593262403de16fa2dc7acb21284d71bf0a28f5792581b4a6be89d2a7ec1d4f7849832fe7b4daa"
+                        #"pub_key": "c26cfef538dd15b6f52593262403de16fa2dc7acb21284d71bf0a28f5792581b4a6be89d2a7ec1d4f7849832fe7b4daa"
+                        "pub_key": "187e912cedc8be7ff48ea831c07b05608f4374d1fe9d9394c1d8f0b75b2876b0b0a7aa2d9bb449321c6982c00b354682"
                     }
                 ]
             }
@@ -117,13 +118,14 @@ class ZachCoinClient (Node):
             return 0
         
         # Validate Transaction
-        if(self.validate_tx(block["tx"] == 0)):
+        if(self.validate_tx(block["tx"], 1) == 0):
             print(invalid_msg + " Invalid Transaction")
             return 0
         
         # If you got this far, block is valid and should be added to blockchain
+        return 1
 
-    def validate_tx(self, tx):
+    def validate_tx(self, tx, cb):
         # First check that all required fields are present
         fields = ["type", "input", "sig", "output"]
         invalid_msg = "INVALID TRANSACTION: "
@@ -139,73 +141,79 @@ class ZachCoinClient (Node):
         
         # Check transaction input
         tx_input = tx["input"]
-        if((tx_input["n"] > len(self.blockchain)-1) or (self.blockchain[tx_input["n"]]["id"] != tx_input["id"])):
-            print(invalid_msg + " Invalid Input")
+        input_block = self.find_block(tx_input["id"])
+        if(input_block is None):
+            print(invalid_msg + " Input doesn't exist")
             return 0
         
         # Check that input is unspent
         input_id = tx_input["id"]
+        n = tx_input["n"]
         for block in self.blockchain:
-            if(block["input"]["id"] == input_id):
+            if((block["tx"]["input"]["id"] == input_id) and (block["tx"]["input"]["n"] == n)):
                 print(invalid_msg + " Input already spent")
                 return 0
             
         # Check that value of input = sum of outputs (excluding coinbase)
         output = tx["output"]
-        input_sum = self.blockchain[tx_input["n"]]["output"][0]["value"]
-        if(len(output) < 2):
-            print(invalid_msg + " Not enough outputs")
+        input_sum = input_block["tx"]["output"][n]["value"]
+        if(len(output) < 1):
+            print(invalid_msg + " No outputs")
             return 0
-        if(len(output) == 2):
+        if(len(output) == 1):
             # Check sums
-            if(output[0]["value"] != input_sum):
-                print(invalid_msg + " Input and Outputs don't match")
+            if((cb == 1) or (output[0]["value"] != input_sum)):
+                print(invalid_msg + " Input and Outputs don't match or missing coinbase")
                 return 0
-
-            # Check if coinbase value valid
-            if(output[1]["value"] != self.COINBASE):
-                print(invalid_msg + "Invalid Coinbase value")
-                return 0
-        elif(len(output) == 3):
-            output_sum = output[0]["value"] + output[1]["value"]
+        elif(len(output) == 2):
+            if(cb == 1):
+                output_sum = output[0]["value"]
+            else:
+                output_sum = output[0]["value"] + output[1]["value"]
             if(output_sum != input_sum):
                 print(invalid_msg + " Input and Outputs don't match")
                 return 0
-            if(output[2]["value"] != self.COINBASE):
-                print(invalid_msg + "Invalid Coinbase value")
+        elif(len(output) == 3):
+            if(cb != 1):
+                print(invalid_msg + " Coinbase required")
                 return 0
+            output_sum = output[0]["value"] + output[1]["value"]
+            if(output_sum != input_sum):
+                print(invalid_msg + " Inputs and Outputs don't match")
         else:
             print(invalid_msg + " Too many outputs")
             return 0
         
         # Verify signature of transaction
-        vk = VerifyingKey.from_string(bytes.fromhex(tx["sig"]))
         try:
+            vk = VerifyingKey.from_string(bytes.fromhex(tx["sig"]))
             assert vk.verify(tx["sig"], json.dumps(tx['input']))
         except Exception:
             print(invalid_msg + "Bad Signature")
+            return 0
 
         return 1
     
 
     def find_block(self, block_id):
-        # Given block id as string, see if block exists in the blockchain and return its location
+        # Given block id as string, see if block exists in the blockchain and return it
         for i in range(len(self.blockchain)):
             if(self.blockchain[i]["id"] == block_id):
-                return i
-        return -1
+                return self.blockchain[i]
+        return
 
-    def create_utx(self, vk, block_id, amt, pubkey, sk):
-        # Given block ID for input, amount to send and public key of recipient, create transaction
+    def create_utx(self, sk, vk, block_id, n, amt, pubkey):
+        # Given info for input, amount to send and public key of recipient, create transaction
+
         # Check if input block actually exists
-        input_ind = self.find_block(block_id)
-        if(input_ind == -1):
+        input_block = self.find_block(block_id)
+        if(input_block is None):
             print("Input block doesn't exist, exiting")
-            return 0
+            return
         
         input_field = {
             'id': block_id,
-            'n': input_ind
+            'n': n
         }
         
         sig = sk.sign(json.dumps(input_field, sort_keys=True).encode('utf-8')).hex()
@@ -224,9 +232,7 @@ class ZachCoinClient (Node):
         }
         utx['output'].append(payout)
 
-        # blk = self.blockchain[input_ind]
-        # outpt = blk["output"]
-        input_pay = self.blockchain[input_ind]["tx"]["output"][0]["value"]
+        input_pay = input_block["tx"]["output"][0]["value"]
         if(input_pay > amt):
             change = input_pay - amt
             payback = {
@@ -240,12 +246,9 @@ class ZachCoinClient (Node):
 
     def mine_utx(self, utx, vk):
         # Given unspent transaction, validate it and attempt to mine with PoW
-        if(self.validate_tx(utx) == 0):
+        if(self.validate_tx(utx, 0) == 0):
             print("INVALID UTX. MINING FAILED. RIP")
-            return 0
-        
-        # Start building block
-        
+            return
 
         # Add coinbase to utx before processing
         coinbase = {
@@ -260,7 +263,20 @@ class ZachCoinClient (Node):
             nonce = Random.new().read(AES.block_size).hex()
         pow = hashlib.sha256(json.dumps(utx, sort_keys=True).encode('utf8') + nonce.encode('utf-8')).hexdigest()
 
-        return ()
+        # Compute block ID
+        block_id = hashlib.sha256(json.dumps(utx, sort_keys=True).encode('utf-8')).hexdigest()
+
+        # Now create block:
+        mined_block = {
+            'type': self.BLOCK,
+            'id': block_id,
+            'nonce': nonce,
+            'pow': pow,
+            'prev': self.blockchain[len(self.blockchain)-1]['id'],
+            'tx': utx
+        }
+
+        return mined_block
 
     
 def compute_BlockID(block):
@@ -331,12 +347,33 @@ def main():
         elif x == 2:
             print(json.dumps(client.utx, indent=1))
         elif x == 3:
-            pk = input("What is the public key of who you want to pay?\tEnter Here -> ")
-            block_id = input("Which block would you like to pay from?\tEnter Here -> ")
-            amt = input("How much do you want to pay?\t\t\tEnter Here ->")
-            utx = client.create_utx(vk, block_id, int(amt), pk, sk)
-            client.node_message(client, utx)
-
+            pk = input("What is the public key of who you want to pay?\n\tEnter Here -> ")
+            block_id = input("Which block would you like to pay from?\n\tEnter Here -> ")
+            n = input("Enter the index of the payment you wish to pay from (n)\n\tEnter Here ->")
+            amt = input("How much do you want to pay?\n\tEnter Here ->")
+            utx = client.create_utx(sk, vk, block_id, int(n), int(amt), pk)
+            if(utx is None):
+                print("UTX creation failed, RIP")
+            else:
+                client.node_message(client, utx)
+        elif x == 4:
+            # Take latest UTX to mine
+            if(len(client.utx) < 1):
+                print("UTX pool is empty, nothing to mine")
+            utx = client.utx[len(client.utx)-1]
+            mined = client.mine_utx(utx, vk)
+            client.utx = client.utx[:len(client.utx)-1]
+            if(mined is None):
+                # Mining failed, reject utx and remove
+                print("Newest utx was invalid, please try again")
+            else:
+                success = client.validate_block(mined)
+                if(success):
+                    print("Mined block is valid and will be addded to local blockchain")
+                    client.blockchain.append(mined)
+                else:
+                    print("Mined block was invalid and will NOT be added to local blockchain")
+            time.sleep(1)
         # TODO: Add options for creating and mining transactions
         # as well as any other additional features
 
