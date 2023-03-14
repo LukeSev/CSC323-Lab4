@@ -3,9 +3,17 @@ from Crypto.Cipher import AES
 from Crypto import Random
 from ecdsa import VerifyingKey, SigningKey
 from p2pnetwork.node import Node
+import signal
 
 SERVER_ADDR = "zachcoin.net"
 SERVER_PORT = 9067
+
+# Handles disconnecting from server
+class DisconnectHandler:
+    def __init__(self, node):
+        self.client = node
+    def __call__(self, signo, frame):
+        self.client.stop()
 
 class ZachCoinClient (Node):
     
@@ -62,7 +70,7 @@ class ZachCoinClient (Node):
         print("outbound_node_disconnected: " + connected_node.id)
 
     def node_message(self, connected_node, data):
-        print("node_message from " + connected_node.id + ": " + json.dumps(data,indent=2))
+        #print("node_message from " + connected_node.id + ": " + json.dumps(data,indent=2))
 
         if data != None:
             if 'type' in data:
@@ -70,6 +78,7 @@ class ZachCoinClient (Node):
                     self.utx.append(data)
                 elif data['type'] == self.BLOCKCHAIN:
                     self.blockchain = data['blockchain']
+                    print_blockchain(data['blockchain'])
                 elif data['type'] == self.UTXPOOL:
                     self.utx = data['utxpool']
                 elif data['type'] == self.BLOCK:
@@ -150,7 +159,7 @@ class ZachCoinClient (Node):
         input_id = tx_input["id"]
         n = tx_input["n"]
         for block in self.blockchain:
-            if((block["tx"]["input"]["id"] == input_id) and (block["tx"]["input"]["n"] == n)):
+            if((block["tx"]["input"]["id"] == input_id) and (len(block["tx"]["input"]) > n) and (block["tx"]["input"]["n"] == n)):
                 print(invalid_msg + " Input already spent")
                 return 0
             
@@ -187,7 +196,7 @@ class ZachCoinClient (Node):
         # Verify signature of transaction
         try:
             vk = VerifyingKey.from_string(bytes.fromhex(tx["sig"]))
-            assert vk.verify(tx["sig"], json.dumps(tx['input']))
+            assert vk.verify(bytes.fromhex(tx["sig"]), json.dumps(tx['input'], sort_keys=True)).encode('utf-8')
         except Exception:
             print(invalid_msg + "Bad Signature")
             return 0
@@ -277,6 +286,10 @@ class ZachCoinClient (Node):
         }
 
         return mined_block
+    
+    def submit_json(self, json_info):
+        self.connect_with_node(SERVER_ADDR, SERVER_PORT)
+        self.send_to_nodes(json_info)
 
     
 def compute_BlockID(block):
@@ -285,8 +298,19 @@ def compute_BlockID(block):
 def compute_PoW(tx, nonce):
     return hashlib.sha256(json.dumps(tx, sort_keys=True).encode('utf-8') + nonce.encode('utf-8')).hexdigest()
 
-def main():
+def print_blockchain(blockchain):
+    for i in range(1, len(blockchain)+1):
+        line_len = 50
+        block_title = "  B L O C K " + str(i) + " " * len(str(i))
+        print()
+        print("=" * (line_len+len(block_title)))
+        print("=" * int(line_len/2) + block_title + "=" * int(line_len/2))
+        print("=" * (line_len+len(block_title)))
+        print(json.dumps(blockchain[i-1], indent=1))
+        print("=" * (line_len+len(block_title)))
+        print()
 
+def main():
     if len(sys.argv) < 3:
         print("Usage: python3", sys.argv[0], "CLIENTNAME PORT")
         quit()
@@ -321,6 +345,7 @@ def main():
     client.connect_with_node(SERVER_ADDR, SERVER_PORT)
     print("Starting ZachCoin™ Client:", sys.argv[1])
     #time.sleep(2)
+    signal.signal(signal.SIGINT, DisconnectHandler(client))
 
     while True:
         os.system('cls' if os.name=='nt' else 'clear')
@@ -343,7 +368,7 @@ def main():
             print("sk: ", sk.to_string().hex())
             print("vk: ", vk.to_string().hex())
         elif x == 1:
-            print(json.dumps(client.blockchain, indent=1))
+            print_blockchain(client.blockchain)
         elif x == 2:
             print(json.dumps(client.utx, indent=1))
         elif x == 3:
@@ -355,7 +380,8 @@ def main():
             if(utx is None):
                 print("UTX creation failed, RIP")
             else:
-                client.node_message(client, utx)
+                #client.node_message(client, utx)
+                client.utx.append(utx)
         elif x == 4:
             # Take latest UTX to mine
             if(len(client.utx) < 1):
@@ -373,7 +399,7 @@ def main():
                     client.blockchain.append(mined)
                 else:
                     print("Mined block was invalid and will NOT be added to local blockchain")
-            time.sleep(1)
+        time.sleep(1)
         # TODO: Add options for creating and mining transactions
         # as well as any other additional features
 
