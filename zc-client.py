@@ -340,16 +340,16 @@ def main():
     client = ZachCoinClient("127.0.0.1", int(sys.argv[2]), sys.argv[1])
     client.debug = False
 
-    #time.sleep(1)
+    time.sleep(1)
 
     client.start()
 
-    #time.sleep(1)
+    time.sleep(1)
 
     #Connect to server 
     client.connect_with_node(SERVER_ADDR, SERVER_PORT)
     print("Starting ZachCoin™ Client:", sys.argv[1])
-    #time.sleep(2)
+    time.sleep(2)
     signal.signal(signal.SIGINT, DisconnectHandler(client))
 
     while True:
