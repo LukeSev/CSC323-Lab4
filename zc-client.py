@@ -45,8 +45,7 @@ class ZachCoinClient (Node):
                 "output": [
                     {
                         "value": 50,
-                        #"pub_key": "c26cfef538dd15b6f52593262403de16fa2dc7acb21284d71bf0a28f5792581b4a6be89d2a7ec1d4f7849832fe7b4daa"
-                        "pub_key": "187e912cedc8be7ff48ea831c07b05608f4374d1fe9d9394c1d8f0b75b2876b0b0a7aa2d9bb449321c6982c00b354682"
+                        "pub_key": "c26cfef538dd15b6f52593262403de16fa2dc7acb21284d71bf0a28f5792581b4a6be89d2a7ec1d4f7849832fe7b4daa"
                     }
                 ]
             }
@@ -71,17 +70,23 @@ class ZachCoinClient (Node):
 
     def node_message(self, connected_node, data):
         #print("node_message from " + connected_node.id + ": " + json.dumps(data,indent=2))
+        print("node_message from " + connected_node.id)
 
         if data != None:
             if 'type' in data:
                 if data['type'] == self.TRANSACTION:
+                    print("Type - UTX:\n" + json.dumps(data,indent=2))
                     self.utx.append(data)
+                    print(json.dumps(data,indent=2))
                 elif data['type'] == self.BLOCKCHAIN:
+                    print("Type - BLOCKCHAIN:\n" + json.dumps(data,indent=2))
                     self.blockchain = data['blockchain']
                     print_blockchain(data['blockchain'])
                 elif data['type'] == self.UTXPOOL:
+                    print("Type - UTXPOOL:\n" + json.dumps(data,indent=2))
                     self.utx = data['utxpool']
                 elif data['type'] == self.BLOCK:
+                    print("Type - BLOCK:\n" + json.dumps(data,indent=2))
                     # Validate block
                     if(self.validate_block(data) == 0):
                         print("INVALID BLOCK")
@@ -195,8 +200,8 @@ class ZachCoinClient (Node):
         
         # Verify signature of transaction
         try:
-            vk = VerifyingKey.from_string(bytes.fromhex(tx["sig"]))
-            assert vk.verify(bytes.fromhex(tx["sig"]), json.dumps(tx['input'], sort_keys=True)).encode('utf-8')
+            vk = VerifyingKey.from_string(bytes.fromhex(input_block["tx"]["output"][n]["pub_key"]))
+            assert vk.verify(bytes.fromhex(tx["sig"]), json.dumps(tx['input'], sort_keys=True).encode('utf-8'))
         except Exception:
             print(invalid_msg + "Bad Signature")
             return 0
@@ -374,14 +379,16 @@ def main():
         elif x == 3:
             pk = input("What is the public key of who you want to pay?\n\tEnter Here -> ")
             block_id = input("Which block would you like to pay from?\n\tEnter Here -> ")
-            n = input("Enter the index of the payment you wish to pay from (n)\n\tEnter Here ->")
-            amt = input("How much do you want to pay?\n\tEnter Here ->")
+            n = input("Enter the index of the payment you wish to pay from (n)\n\tEnter Here -> ")
+            amt = input("How much do you want to pay?\n\tEnter Here -> ")
             utx = client.create_utx(sk, vk, block_id, int(n), int(amt), pk)
             if(utx is None):
                 print("UTX creation failed, RIP")
             else:
+                print("Transaction creation successful, uploading to server")
+                client.submit_json(utx)
                 #client.node_message(client, utx)
-                client.utx.append(utx)
+                #client.utx.append(utx)
         elif x == 4:
             # Take latest UTX to mine
             if(len(client.utx) < 1):
@@ -395,10 +402,11 @@ def main():
             else:
                 success = client.validate_block(mined)
                 if(success):
-                    print("Mined block is valid and will be addded to local blockchain")
-                    client.blockchain.append(mined)
+                    print("Mined block is valid and will be uploaded to the server")
+                    client.submit_json(mined)
+                    #client.blockchain.append(mined)
                 else:
-                    print("Mined block was invalid and will NOT be added to local blockchain")
+                    print("Mined block was invalid and will NOT be uploaded to the server")
         time.sleep(1)
         # TODO: Add options for creating and mining transactions
         # as well as any other additional features
