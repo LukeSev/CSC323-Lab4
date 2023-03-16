@@ -88,9 +88,12 @@ class ZachCoinClient (Node):
                 elif data['type'] == self.BLOCK:
                     print("Type - BLOCK:\n" + json.dumps(data,indent=2))
                     # Validate block
-                    if(self.validate_block(data) == 0):
-                        print("INVALID BLOCK")
-                        return
+                    try:
+                        if(self.validate_block(data) == 0):
+                            print("INVALID BLOCK")
+                            return
+                    except Exception:
+                        print("MALFORMED BLOCK")
                     # If valid, add to end of blockchain
                     self.blockchain.append(data)
                 #TODO: Validate blocks
@@ -304,30 +307,39 @@ class ZachCoinClient (Node):
         return pubkeys
     
     def print_barebones_blockchain(self):
+        length = 96
         for i in range(len(self.blockchain)):
             # Collect important bits of data from transaction
             block = self.blockchain[i]
-            line_len = 50
+            line_len = length
             block_title = "  B L O C K " + str(i+1) + " " * len(str(i))
 
             id = block["id"]
             input_id = block["tx"]["input"]["id"]
-            output = block["output"]
-            if(len(output) == 2):
+            output = block["tx"]["output"]
+            if(len(output) == 1):
+                miner = (output[0]["pub_key"], output[0]["value"])
+                payee = ("N/A", 0)
+                payer = ("N/A", 0)
+                change = 0
+            elif(len(output) == 2):
                 payee = (output[0]["pub_key"], output[0]["value"])
+                change = 0
                 miner = (output[1]["pub_key"], output[1]["value"])
-                outputs = (payee, miner)
-            elif(len(output == 3)):
+            elif(len(output) == 3):
                 payee = (output[0]["pub_key"], output[0]["value"])
                 change = output[1]["value"]
                 miner = (output[2]["pub_key"], output[2]["value"])
-                outputs = (payee, ("",change), miner)
 
             print()
             print("-" * (line_len+len(block_title)))
             print("-" * int(line_len/2) + block_title + "-" * int(line_len/2))
             print("Payer: {}".format(input_id))
-            print("Payee: ")
+            print("Payee: {}".format(payee[0]))
+            print("Amount paid: {}".format(payee[1]))
+            print("Change: {}".format(change))
+            print("Miner: {}".format(miner[0]))
+            
             print("-" * (line_len+len(block_title)))
 
     def generate_ZC(self, utx_params, ZC):
@@ -377,18 +389,6 @@ class ZachCoinClient (Node):
         generated = {}
         for i in range(len(keychain)):
             generated[keychain[i][1].to_string().hex()] = []
-
-        # ZC_tracker_path = "./" + generated[0] + ".txt"
-        #     with open(ZC_tracker_path, 'w') as f:
-        #         f.write("Secret Key (Shhhhhh don't tell anyone): {}\n".format(generated[2]))
-        #         for tx in generated[1]:
-        #             print("Block ID: {}".format(tx[0]))
-        #             f.write("Block ID: {}\n".format(tx[0]))
-        #             print("\tZC Generated: {}".format(tx[1]))
-        #             f.write("\tZC Generated: {}\n".format(tx[1]))
-        #             sum += tx[1]
-        #         print("Total ZC generated: {}".format(sum))
-        #         f.write("Total ZC generated: {}".format(sum))
 
         ZC_tracker_path = "./" + keys[1].to_string().hex() + ".txt"
         with open(ZC_tracker_path, 'w') as f:
@@ -515,9 +515,7 @@ def main():
                 print("UTX creation failed, RIP")
             else:
                 print("Transaction creation successful, uploading to server")
-                #client.submit_json(utx)
-                #client.node_message(client, utx)
-                client.utx.append(utx)
+                client.submit_json(utx)
         elif x == 4:
             # Take latest UTX to mine
             if(len(client.utx) < 1):
