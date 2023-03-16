@@ -83,8 +83,10 @@ class ZachCoinClient (Node):
                     self.blockchain = data['blockchain']
                     print_blockchain(data['blockchain'])
                 elif data['type'] == self.UTXPOOL:
-                    print("Type - UTXPOOL:\n" + json.dumps(data,indent=2))
+                    # print("Type - UTXPOOL:\n" + json.dumps(data,indent=2))
+                    print("Type - UTXPOOL:\n")
                     self.utx = data['utxpool']
+                    self.print_utxpool()
                 elif data['type'] == self.BLOCK:
                     print("Type - BLOCK:\n" + json.dumps(data,indent=2))
                     # Validate block
@@ -334,6 +336,7 @@ class ZachCoinClient (Node):
             print()
             print("-" * (line_len+len(block_title)))
             print("-" * int(line_len/2) + block_title + "-" * int(line_len/2))
+            print("-" * (line_len+len(block_title)))
             print("Payer: {}".format(input_id))
             print("Payee: {}".format(payee[0]))
             print("Amount paid: {}".format(payee[1]))
@@ -341,6 +344,18 @@ class ZachCoinClient (Node):
             print("Miner: {}".format(miner[0]))
             
             print("-" * (line_len+len(block_title)))
+
+    def print_utxpool(self):
+        for i in range(1, len(self.utx)+1):
+            line_len = 104
+            block_title = "  U T X " + str(i) + " " * len(str(i))
+            print()
+            print("=" * (line_len+len(block_title)))
+            print("=" * int(line_len/2) + block_title + "=" * int(line_len/2))
+            print("=" * (line_len+len(block_title)))
+            print(json.dumps(self.utx[i-1], indent=1))
+            print("=" * (line_len+len(block_title)))
+            print()
 
     def generate_ZC(self, utx_params, ZC):
         # This "attack" takes advantage of the fact that you don't need to upload a utx to the server to mine it
@@ -431,7 +446,7 @@ def compute_PoW(tx, nonce):
 
 def print_blockchain(blockchain):
     for i in range(1, len(blockchain)+1):
-        line_len = 50
+        line_len = 100
         block_title = "  B L O C K " + str(i) + " " * len(str(i))
         print()
         print("=" * (line_len+len(block_title)))
@@ -440,8 +455,6 @@ def print_blockchain(blockchain):
         print(json.dumps(blockchain[i-1], indent=1))
         print("=" * (line_len+len(block_title)))
         print()
-
-
 
 
 def main():
@@ -491,7 +504,7 @@ def main():
         print(client.id)
         print(client.callback)
 
-        x = input("\t0: Print keys\n\t1: Print blockchain\n\t2: Print UTX pool\n\t3: Create transaction\n\t4: Mine transaction\n\t5: Print all Pub Keys\n\t6: Generate some ZachCoin\n\nEnter your choice -> ")
+        x = input("\t0: Print keys\n\t1: Print blockchain\n\t2: Print UTX pool\n\t3: Create transaction\n\t4: Mine transaction\n\t5: Print all Pub Keys\n\t6: Print blockchain (barebones)\n\t7: Generate some ZachCoin\n\nEnter your choice -> ")
         try:
             x = int(x)
         except:
@@ -504,7 +517,8 @@ def main():
         elif x == 1:
             print_blockchain(client.blockchain)
         elif x == 2:
-            print(json.dumps(client.utx, indent=1))
+            #print(json.dumps(client.utx, indent=1))
+            client.print_utxpool()
         elif x == 3:
             pk = input("What is the public key of who you want to pay?\n\tEnter Here -> ")
             block_id = input("Which block would you like to pay from?\n\tEnter Here -> ")
@@ -539,6 +553,8 @@ def main():
             for pubkey in pubkeys:
                 print(pubkey)
         elif x == 6:
+            client.print_barebones_blockchain()
+        elif x == 7:
             ZC = input("How many ZachCoins would you like to generate?\n\tEnter Here -> ")
             starting_blockID = input("What is the block ID with an unused payment?\n\tEnter Here -> ")
             n = input("What is n for the unused payment?\n\tEnter Here -> ")
