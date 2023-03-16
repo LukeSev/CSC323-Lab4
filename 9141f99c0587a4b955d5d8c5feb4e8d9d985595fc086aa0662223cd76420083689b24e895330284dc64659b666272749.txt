@@ -1,0 +1,28 @@
+Secret Key (Shhhhhh don't tell anyone): 7c1907ac00e4c8b84daadba9e9da99cf0308016a76f22883
+Block ID: f72d369dd47d5a56d197eec013b305835ee372e47fabc816915528d09b609b30
+	ZC Generated: 46
+Block ID: c3d385317c22361fc6b7aa142886c2f53f96da9c44dd7958dcfe58772f0dcac1
+	ZC Generated: 46
+Block ID: a689d0062f5b998407765b200a65a362b3d7fbaf6493f379531356bde2adaa83
+	ZC Generated: 47
+Block ID: 1dcb2ef84a9ce37ea2e7c6fb064fab58dee2c08c9f1f28665102b1f04d94002a
+	ZC Generated: 47
+Block ID: bc6b8df2aa01924718758da7692f17f6d60ffa2685ade91a2df162232aed7895
+	ZC Generated: 45
+Block ID: c1f61fb148859157d427e849bbab442370ea8026fff9d2a801c6e9fec999159d
+	ZC Generated: 48
+Block ID: 565351b6feca2712b0b7d9ede587d449698cee4340860f5c033e61c7f4285c47
+	ZC Generated: 48
+Block ID: 8f67b31f253f9ad73bd28f0dc1a7dd3cecadcdbb9ecb78f97b7ee17231278641
+	ZC Generated: 45
+Block ID: c010d80c113771d180b23ff39a1f3038be7ced98f1c05ca5173324e7e0ce374d
+	ZC Generated: 45
+Block ID: 0f00ee617910479380d8d7a47ed455ec84f81438739e57acbad8b06c7e1928a5
+	ZC Generated: 49
+Block ID: 6b230116253cdf4da786fa2fd93a3b2bb74c4ce400a73809679f263b6f5d81b6
+	ZC Generated: 47
+Block ID: 12d5a452460664113aa8f7c0390bbce4063c9dbeb4e3267935ed700d35b21189
+	ZC Generated: 48
+	Block ID: 12d5a452460664113aa8f7c0390bbce4063c9dbeb4e3267935ed700d35b21189
+	ZC Generated: 50
+Total ZC Generated: 611
