@@ -246,7 +246,7 @@ class ZachCoinClient (Node):
         }
         utx['output'].append(payout)
 
-        input_pay = input_block["tx"]["output"][0]["value"]
+        input_pay = input_block["tx"]["output"][n]["value"]
         if(input_pay > amt):
             change = input_pay - amt
             payback = {
@@ -295,6 +295,132 @@ class ZachCoinClient (Node):
     def submit_json(self, json_info):
         self.connect_with_node(SERVER_ADDR, SERVER_PORT)
         self.send_to_nodes(json_info)
+    
+    def get_pubkeys(self):
+        pubkeys = []
+        for block in self.blockchain:
+            if(block["tx"]["output"][0]["pub_key"] not in pubkeys):
+                pubkeys.append(block["tx"]["output"][0]["pub_key"])
+        return pubkeys
+    
+    def print_barebones_blockchain(self):
+        for i in range(len(self.blockchain)):
+            # Collect important bits of data from transaction
+            block = self.blockchain[i]
+            line_len = 50
+            block_title = "  B L O C K " + str(i+1) + " " * len(str(i))
+
+            id = block["id"]
+            input_id = block["tx"]["input"]["id"]
+            output = block["output"]
+            if(len(output) == 2):
+                payee = (output[0]["pub_key"], output[0]["value"])
+                miner = (output[1]["pub_key"], output[1]["value"])
+                outputs = (payee, miner)
+            elif(len(output == 3)):
+                payee = (output[0]["pub_key"], output[0]["value"])
+                change = output[1]["value"]
+                miner = (output[2]["pub_key"], output[2]["value"])
+                outputs = (payee, ("",change), miner)
+
+            print()
+            print("-" * (line_len+len(block_title)))
+            print("-" * int(line_len/2) + block_title + "-" * int(line_len/2))
+            print("Payer: {}".format(input_id))
+            print("Payee: ")
+            print("-" * (line_len+len(block_title)))
+
+    def generate_ZC(self, utx_params, ZC):
+        # This "attack" takes advantage of the fact that you don't need to upload a utx to the server to mine it
+        # Given an amount of ZC to generate, and the info to generate the first utx,
+        #   creates and mines a series of utx's locally under various public/private keypairs
+        # Since we're mining the utx's locally, there's no competition and we can guarantee we'll get the payout
+        # Returns dictionary containing set of vk used as keys with values being an array of tuples containing the (blockID whose output at n=1 is change of transaction, change)
+
+        # Create 10 random sk/vk pairs with which we will generate ZC
+        keychain = []
+        with open("./notAnAdv.key", 'w') as f:
+            for i in range(10):
+                sk = SigningKey.generate()
+                vk = sk.verifying_key
+                f.write(sk.to_string().hex() + " " + vk.to_string().hex() + "\n")
+                keychain.append((sk,vk))
+
+        pubkeys = self.get_pubkeys()
+        keys = keychain[random.randint(0,len(keychain)-1)]
+
+        # Create initial transaction we can start from
+        utx = self.create_utx(utx_params[0], utx_params[1], utx_params[2], int(utx_params[3]), 1, pubkeys[random.randint(0,len(pubkeys)-1)])
+        if(utx is None):
+            print("UTX creation failed, exiting.")
+            time.sleep(1)
+            return
+        mined = self.mine_utx(utx, keys[1])
+        if(mined is None):
+            print("Failed to mine initial utx. Exiting.")
+            return
+        
+        self.submit_json(mined)
+        #self.blockchain.append(mined)
+
+        # Verify that it was added to blockchain
+        time.sleep(1)
+        if(self.find_block(mined["id"]) is None):
+            print("Failed to upload initial utx. Exiting.")
+            return
+
+        # Now start creating some transactions
+        ZC_generated = 0
+        payment_blockID = mined["id"]
+
+        # Create dictionary to hold vk's used along with transactions made using each vk
+        generated = {}
+        for i in range(len(keychain)):
+            generated[keychain[i][1].to_string().hex()] = []
+
+        # ZC_tracker_path = "./" + generated[0] + ".txt"
+        #     with open(ZC_tracker_path, 'w') as f:
+        #         f.write("Secret Key (Shhhhhh don't tell anyone): {}\n".format(generated[2]))
+        #         for tx in generated[1]:
+        #             print("Block ID: {}".format(tx[0]))
+        #             f.write("Block ID: {}\n".format(tx[0]))
+        #             print("\tZC Generated: {}".format(tx[1]))
+        #             f.write("\tZC Generated: {}\n".format(tx[1]))
+        #             sum += tx[1]
+        #         print("Total ZC generated: {}".format(sum))
+        #         f.write("Total ZC generated: {}".format(sum))
+
+        ZC_tracker_path = "./" + keys[1].to_string().hex() + ".txt"
+        with open(ZC_tracker_path, 'w') as f:
+            f.write("Secret Key (Shhhhhh don't tell anyone): {}\n".format(keys[0].to_string().hex()))
+            while(ZC_generated+self.COINBASE < ZC):
+                payment = random.randint(1,5) # Randomly pay between 1-5 coins
+                utx = self.create_utx(keys[0], keys[1], payment_blockID, 2, payment, pubkeys[random.randint(0,len(pubkeys)-1)])
+                if(utx is None):
+                    print("Adv utx creation failed, continuing")
+                    continue
+                mined = self.mine_utx(utx, keys[1])
+                if(mined is None):
+                    print("Adv mining failed, continuing")
+                    continue
+                
+                # Mining successful, try to add to blockchain
+                self.submit_json(mined)
+                time.sleep(1)
+                if(self.find_block(mined["id"]) is not None):
+                    # Operation successful, save the transaction results
+                    payment_blockID = mined["id"]
+                    f.write("Block ID: {}\n".format(payment_blockID))
+                    generated[keys[1].to_string().hex()].append((payment_blockID, self.COINBASE-payment))
+                    f.write("\tZC Generated: {}\n".format(self.COINBASE-payment))
+                    ZC_generated += self.COINBASE-payment
+            # Add final, unspent coinbase
+            generated[keys[1].to_string().hex()].append((payment_blockID, self.COINBASE))
+            f.write("Block ID: {} (Coinbase)\n".format(payment_blockID))
+            f.write("\tZC Generated: {}\n".format(self.COINBASE))
+            f.write("Total ZC generated: {}".format(ZC_generated))
+        
+        return (keys[1].to_string().hex(), generated[keys[1].to_string().hex()], keys[0].to_string().hex())
 
     
 def compute_BlockID(block):
@@ -314,6 +440,9 @@ def print_blockchain(blockchain):
         print(json.dumps(blockchain[i-1], indent=1))
         print("=" * (line_len+len(block_title)))
         print()
+
+
+
 
 def main():
     if len(sys.argv) < 3:
@@ -362,7 +491,7 @@ def main():
         print(client.id)
         print(client.callback)
 
-        x = input("\t0: Print keys\n\t1: Print blockchain\n\t2: Print UTX pool\n\t3: Create transaction\n\t4: Mine transaction\n\nEnter your choice -> ")
+        x = input("\t0: Print keys\n\t1: Print blockchain\n\t2: Print UTX pool\n\t3: Create transaction\n\t4: Mine transaction\n\t5: Print all Pub Keys\n\t6: Generate some ZachCoin\n\nEnter your choice -> ")
         try:
             x = int(x)
         except:
@@ -386,9 +515,9 @@ def main():
                 print("UTX creation failed, RIP")
             else:
                 print("Transaction creation successful, uploading to server")
-                client.submit_json(utx)
+                #client.submit_json(utx)
                 #client.node_message(client, utx)
-                #client.utx.append(utx)
+                client.utx.append(utx)
         elif x == 4:
             # Take latest UTX to mine
             if(len(client.utx) < 1):
@@ -407,6 +536,30 @@ def main():
                     #client.blockchain.append(mined)
                 else:
                     print("Mined block was invalid and will NOT be uploaded to the server")
+        elif x == 5:
+            pubkeys = client.get_pubkeys()
+            for pubkey in pubkeys:
+                print(pubkey)
+        elif x == 6:
+            ZC = input("How many ZachCoins would you like to generate?\n\tEnter Here -> ")
+            starting_blockID = input("What is the block ID with an unused payment?\n\tEnter Here -> ")
+            n = input("What is n for the unused payment?\n\tEnter Here -> ")
+            utx_params = (sk, vk, starting_blockID, n)
+            generated = client.generate_ZC(utx_params, int(ZC))
+            print("ZachCoin generated! Public Key Associated with your ZC: {}".format(generated[0]))
+            sum = 0
+            ZC_tracker_path = "./" + generated[0] + ".txt"
+            with open(ZC_tracker_path, 'w') as f:
+                f.write("Secret Key (Shhhhhh don't tell anyone): {}\n".format(generated[2]))
+                for tx in generated[1]:
+                    print("Block ID: {}".format(tx[0]))
+                    f.write("Block ID: {}\n".format(tx[0]))
+                    print("\tZC Generated: {}".format(tx[1]))
+                    f.write("\tZC Generated: {}\n".format(tx[1]))
+                    sum += tx[1]
+                print("Total ZC generated: {}".format(sum))
+                f.write("Total ZC generated: {}".format(sum))
+
         time.sleep(1)
         # TODO: Add options for creating and mining transactions
         # as well as any other additional features

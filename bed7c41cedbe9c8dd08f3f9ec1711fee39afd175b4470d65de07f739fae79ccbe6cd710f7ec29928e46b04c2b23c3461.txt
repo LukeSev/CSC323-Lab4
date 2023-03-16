@@ -1,0 +1,4 @@
+Secret Key (Shhhhhh don't tell anyone): 251c144e1991d926a2a8be9af52eeb30a8aa52cdf335d398
+Block ID: b8f555c2d7feeeff4e3f77a01638109892c8c59078ba0b38d935ba67f8239d28
+	ZC Generated: 50
+Total ZC generated: 50
